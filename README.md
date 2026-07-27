@@ -12,7 +12,8 @@ This project implements a comprehensive simulation environment using the **NVIDI
 
 **Constraints**:
 - **Framework**: NVIDIA Sionna v0.15+ / TensorFlow 2.13+ with GPU acceleration.
-- **Topology**: Base Station (64-antenna UPA), Single-antenna UE.
+- **Topology**: Base Station (8x8 UPA, 64-antenna, $0.5\lambda$ spacing, Vertical polarization), Single-antenna UE (1x1 dipole).
+- **Trajectory**: Batch tensor of 3D coordinates representing a linear path ($N_{\text{pos}} = 50$ points spaced by 1 meter) with a velocity vector $\mathbf{v} = [0, 15, 0]$ m/s.
 - **Spectrum**: 3.5 GHz (TDD) carrier frequency, 30 kHz subcarrier spacing, 1024-FFT, 600 active subcarriers.
 - **Execution**: Modular Python architecture governed by central Jupyter Notebooks that handle GPU memory growth, inline Matplotlib visualization, and tensor exports.
 
@@ -20,13 +21,14 @@ This project implements a comprehensive simulation environment using the **NVIDI
 The repository utilizes a modular structure for isolating simulation components:
 - `config.py`: Global simulation parameters (frequencies, array dimensions, velocities, and delay sweeps).
 - `scene_builder.py` & `scene_engine.py`: Initializes the Sionna RT scene (`etoile` environment), instantiates arrays, and generates trajectory batch receivers.
-- `channel_engine.py` & `channel_analyzer.py`: Handles RT path computation via `sionna.rt.PathSolver`, extracts time-evolved OFDM channel matrices, and calculates spatial covariance matrices using massive outer-product tensor operations.
+- `channel_engine.py` & `channel_analyzer.py`: Handles RT path computation (max_depth=3) via `sionna.rt.PathSolver`, extracts time-evolved OFDM channel matrices ($\mathbf{H} \in \mathbb{C}^{N_{\text{pos}} \times N_{\text{sub}} \times N_{\text{tx}}}$), and calculates spatial covariance matrices ($\mathbf{R} = \frac{1}{N_{\text{pos}}} \sum_{i=1}^{N_{\text{pos}}} \mathbf{h}_i \mathbf{h}_i^H$) using massive outer-product tensor operations.
 - `precoder.py` & `evaluator.py`: Computes Zero-Forcing (ZF) precoding matrices and evaluates NMSE and Achievable Sum-Rate.
 - `dataset_exporter.py`: Utility to export generated OFDM tensors ($\mathbf{H}$) and covariance matrices ($\mathbf{R}$) as `.npy` files for ML pipelines.
 
 ## 4. Data Pipeline & Optimization
 - **TensorFlow Execution**: All channel matrices, precoders, and metric evaluations are performed using deeply nested complex-valued TensorFlow tensors for massive parallelism.
-- **Batch Trajectory Ray Tracing**: Exploits parallel receiver simulations in Sionna's PathSolver to evaluate continuous user trajectories instantaneously.
+- **Batch Trajectory Ray Tracing**: Exploits parallel receiver simulations in Sionna's PathSolver to evaluate continuous user trajectories instantaneously. Tensor dimensions are strictly maintained and logged.
+- **Spatial Covariance Math**: Computes the outer product $\mathbf{h}\mathbf{h}^H$ using `tf.matmul(..., adjoint_b=True)` and averages over the trajectory using `tf.reduce_mean(..., axis=0)`.
 - **GPU Memory Growth**: Ensures graceful allocation on arbitrary NVIDIA GPUs, configured during Jupyter Notebook initialization to prevent Out-Of-Memory (OOM) failures.
 
 ## 5. Instructions
@@ -74,7 +76,7 @@ jupyter nbconvert --execute --to notebook --inplace experiments/covariance_visua
 ## 8. Descriptions
 - **NMSE vs Feedback Delay**: Measures the divergence of the channel between estimation ($t=0$) and data transmission ($t=\Delta t$).
 - **Sum-Rate Degradation**: Translates the imperfect Zero-Forcing cancellation from outdated CSI into a physical capacity penalty.
-- **Spatial Covariance Matrix**: An aggregated visualization of the $64 \times 64$ cross-correlation across transmitting antenna elements for a mobile user trajectory.
+- **Spatial Covariance Matrix**: An aggregated visualization (e.g., using `plt.imshow` with the `viridis` colormap on absolute values) of the $64 \times 64$ cross-correlation across transmitting antenna elements for a mobile user trajectory, averaged across subcarriers.
 - **Scene and Path Renders**: Interactive and static plots leveraging Sionna's internal rendering engines to validate line-of-sight and non-line-of-sight propagation geometries.
 
 ## 9. LLM Agent Contributions

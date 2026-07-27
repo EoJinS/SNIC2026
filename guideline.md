@@ -1,4 +1,4 @@
-Here is the comprehensive `guidelines.md` tailored for `antigravity-cli` to implement the trajectory-based spatial covariance analysis. The instructions ensure the agent builds a parallelized Ray-Tracing pipeline and outputs the data in a format optimized for downstream deep learning tasks, such as training CSI feedback compression autoencoders.
+
 # Guidelines: Trajectory-Based Spatial Covariance Analysis in Massive MIMO
 
 ## 1. Project Overview & Objective

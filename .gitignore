@@ -1,0 +1,41 @@
+# 1. 가상환경 및 패키지
+.env
+.venv/
+env/
+venv/
+__pycache__/
+*.py[cod]
+
+# 2. 대용량 연구 데이터 및 결과물 (100MB 이상 업로드 방지)
+*.csv
+*.dat
+*.mat
+*.h5
+*.hdf5
+*.pkl
+*.npy
+*.npz
+
+# 3. AI 모델 가중치 (체크포인트)
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.weights
+
+# 4. 로그 및 데이터 폴더 통째로 제외
+data/
+dataset/
+logs/
+runs/
+wandb/
+outputs/
+results/
+assets/
+/isac_ra
+
+# 5. IDE 및 OS 숨김 파일
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

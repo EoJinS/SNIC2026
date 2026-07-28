@@ -35,7 +35,7 @@ The repository utilizes a modular structure for isolating simulation components:
 To execute the simulation:
 1. Ensure the Python environment has `tensorflow`, `sionna`, `jupyter`, and `matplotlib` installed.
 2. Launch Jupyter Notebook or Jupyter Lab from the project root.
-3. Open `experiments/mobility_analysis.ipynb` or `experiments/covariance_visualization.ipynb`.
+3. Open `experiments/covariance_visualization.ipynb`.
 4. Select "Run All Cells" to execute the simulation, compute sweeps, and render visualizations.
 
 ## 6. Outline
@@ -49,13 +49,11 @@ SNIC2026/
 ├── precoder.py
 ├── evaluator.py
 ├── dataset_exporter.py
-├── make_notebook.py
-├── make_notebook2.py
 ├── data/
 │   ├── h_tensor.npy
 │   └── R_matrix.npy
 ├── experiments/
-│   ├── mobility_analysis.ipynb
+│   ├── mobility_example.ipynb
 │   └── covariance_visualization.ipynb
 └── tests/
     └── test_channel.py
@@ -66,7 +64,7 @@ The full pipelines can be statically generated and executed via CLI:
 ```bash
 # CSI Aging Pipeline
 python make_notebook.py
-jupyter nbconvert --execute --to notebook --inplace experiments/mobility_analysis.ipynb
+jupyter nbconvert --execute --to notebook --inplace experiments/mobility_example.ipynb
 
 # Spatial Covariance Pipeline
 python make_notebook2.py
@@ -84,3 +82,11 @@ jupyter nbconvert --execute --to notebook --inplace experiments/covariance_visua
 - **Jupyter Notebook Serialization**: Wrote automated Python-to-JSON serialization scripts (`make_notebook.py`, `make_notebook2.py`) to generate perfectly valid Jupyter Notebooks (schema v4).
 - **Parallel Trajectory Modeling**: Overcame Sionna versioning constraints by strategically instantiating parallel `Receiver` agents along a trajectory to yield synchronized CFR tensors without OOM errors.
 - **Machine Learning Integration**: Exported generated datasets directly into `.npy` formats, formatting dimensions exactly to specification (`[N_sub, N_tx, N_tx]`) for direct integration into neural network training loops.
+
+## 10. Modifications to Guideline
+During the integration of the GMM module in `covariance_visualization.ipynb`, the following modifications were made to `guideline.md` to ensure correct functionality:
+- **GMM Dictionary Training**: Since a pre-trained dictionary was not provided, an EM fitting step (`gmm_em_fit_fullcov`) was added to train the GMM dictionary on the generated CSI dataset dynamically.
+- **Complex-to-Real Mapping**: The provided GMM module processes real-valued data, while the CSI vector is complex. The mathematical formulation for the log-likelihood MAP inference was updated to convert the complex CSI vector $h \in \mathbb{C}^{N_t}$ to its real isomorphic counterpart $h_{real} \in \mathbb{R}^{2N_t}$, concatenating its real and imaginary parts.
+- **Spatial Vectorization**: Vectorizing the $N_t \times N_c$ matrix into a $38400 \times 1$ vector was aborted as it would result in Out-Of-Memory (OOM) errors during full-covariance EM fitting. The implementation was adjusted to extract the spatial CSI vector $h \in \mathbb{C}^{N_t}$ (by selecting the center subcarrier) to maintain a manageable dimension for the $64 \times 64$ spatial covariance matrices.
+- **Covariance Reconstruction Scaling**: A mathematical bug was identified where rebuilding the complex covariance matrix from the learned real components ($R_{xx}$, $R_{xy}$) resulted in half-scaled magnitudes $\frac{1}{2}|R_c|$. The matrix reconstruction function in the notebook was updated to accurately scale and conjugate the blocks via `2 * (R_xx - 1j * R_xy)`, aligning perfectly with the theoretical expectation for proper circularly symmetric complex Gaussian covariances.
+- **GMTC Compression and NMSE Evaluation**: Added the final stages of the GMTC pipeline into the notebook. For each trajectory point, the spatial CSI vector is transformed using the component-matched Karhunen-Loève Transform (KLT) based on the complex eigenvectors of the active GMM MAP state. Truncation is simulated via a reverse-waterfilling tunable threshold ($\mu = 0.05$), and the channel is reconstructed (Inverse KLT) to compute and plot the Normalized Mean Squared Error (NMSE) across the user's continuous trajectory.

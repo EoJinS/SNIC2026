@@ -1,8 +1,9 @@
 import tensorflow as tf
 import sionna
 from sionna.rt import load_scene, PlanarArray, Transmitter, Receiver
+import numpy as np
 
-def setup_scene(config):
+def setup_scene_with_positions(config, positions):
     scene = load_scene(sionna.rt.scene.etoile)
     scene.frequency = config.fc
     
@@ -34,16 +35,23 @@ def setup_scene(config):
     for name in list(scene.receivers.keys()):
         scene.remove(name)
         
+    pos_list = []
+    # Add multiple receivers for batching
+    for i in range(len(positions)):
+        pos = positions[i]
+        ue = Receiver(f"ue_{i}", position=pos)
+        ue.velocity = [0.0, 15.0, 0.0]
+        scene.add(ue)
+        pos_list.append(pos)
+        
+    pos_tensor = tf.cast(tf.stack(pos_list, axis=0), tf.float32) # [N_pos, 3]
+    return scene, bs, None, pos_tensor
+
+def setup_scene(config):
     positions = []
-    # Add multiple receivers for trajectory batching
     for i in range(config.num_pos):
         pos = [config.pos_start[0] + i*config.pos_step[0],
                config.pos_start[1] + i*config.pos_step[1],
                config.pos_start[2] + i*config.pos_step[2]]
-        ue = Receiver(f"ue_{i}", position=pos)
-        ue.velocity = [0.0, 15.0, 0.0]
-        scene.add(ue)
         positions.append(pos)
-        
-    pos_tensor = tf.cast(tf.stack(positions, axis=0), tf.float32) # [N_pos, 3]
-    return scene, bs, None, pos_tensor
+    return setup_scene_with_positions(config, np.array(positions))

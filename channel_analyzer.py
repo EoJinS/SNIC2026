@@ -24,7 +24,8 @@ def get_ofdm_channel(paths, config):
     h_freq = cfr[..., 0, :config.num_active_subcarriers]
     
     # Reshape to [N_pos, N_tx_ant, active_subcarriers]
-    h_reshaped = tf.reshape(h_freq, [config.num_pos, config.num_bs_ant_rows*config.num_bs_ant_cols, config.num_active_subcarriers])
+    num_rx = tf.shape(h_freq)[0]
+    h_reshaped = tf.reshape(h_freq, [num_rx, config.num_bs_ant_rows*config.num_bs_ant_cols, config.num_active_subcarriers])
     
     # Transpose to [N_pos, N_sub, N_tx]
     h_transposed = tf.transpose(h_reshaped, [0, 2, 1])

@@ -33,6 +33,8 @@ outputs/
 results/
 assets/
 /isac_ra
+demo_figs/
+demo_figs2/
 
 # 5. IDE 및 OS 숨김 파일
 .vscode/

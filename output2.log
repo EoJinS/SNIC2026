@@ -1,0 +1,40 @@
+jitc_llvm_init(): LLVM API initialization failed ..
+/home/ejseo/SNIC2026/experiments/mobility_simulation.py:259: UserWarning: Glyph 52264 (\N{HANGUL SYLLABLE CA}) missing from font(s) DejaVu Sans.
+  plt.tight_layout()
+/home/ejseo/SNIC2026/experiments/mobility_simulation.py:259: UserWarning: Glyph 54924 (\N{HANGUL SYLLABLE HOE}) missing from font(s) DejaVu Sans.
+  plt.tight_layout()
+/home/ejseo/SNIC2026/experiments/mobility_simulation.py:259: UserWarning: Glyph 51208 (\N{HANGUL SYLLABLE JEOL}) missing from font(s) DejaVu Sans.
+  plt.tight_layout()
+Sionna version: 1.2.0
+전체 path 후보 수: 6, 유효 path 수: 6
+  path  0: 1차 회절         power = -122.7 dB
+  path  1: 1차 회절         power = -132.0 dB
+  path  2: 1차 회절         power = -104.4 dB <-- DOMINANT
+  path  3: 1차 회절         power = -127.2 dB
+  path  4: 1차 회절         power = -127.6 dB
+  path  5: 1차 회절         power = -123.0 dB
+[step  0] UE x=  25.0 UE y=  15.6 UE z=   1.8 dominant = 2차 굴절+굴절   ( -89.9 dB)
+[step  1] UE x=  25.0 UE y=  15.3 UE z=   1.8 dominant = 2차 굴절+굴절   ( -90.0 dB)
+[step  2] UE x=  25.0 UE y=  15.1 UE z=   1.8 dominant = 2차 굴절+굴절   ( -90.1 dB)
+[step  3] UE x=  25.0 UE y=  14.8 UE z=   1.8 dominant = 2차 굴절+굴절   ( -90.3 dB)
+[step  4] UE x=  25.0 UE y=  14.5 UE z=   1.8 dominant = 2차 굴절+굴절   ( -90.4 dB)
+[step  5] UE x=  25.0 UE y=  14.3 UE z=   1.8 dominant = 2차 굴절+굴절   ( -90.6 dB)
+[step  6] UE x=  25.0 UE y=  14.0 UE z=   1.8 dominant = 2차 굴절+굴절   ( -90.7 dB)
+[step  7] UE x=  25.0 UE y=  13.8 UE z=   1.8 dominant = 2차 굴절+굴절   ( -90.9 dB)
+[step  8] UE x=  25.0 UE y=  13.5 UE z=   1.8 dominant = 2차 굴절+굴절   ( -91.0 dB)
+[step  9] UE x=  25.0 UE y=  13.2 UE z=   1.8 dominant = 2차 굴절+굴절   ( -91.2 dB)
+[step 10] UE x=  25.0 UE y=  13.0 UE z=   1.8 dominant = 2차 굴절+굴절   ( -91.4 dB)
+[step 11] UE x=  25.0 UE y=  12.7 UE z=   1.8 dominant = 2차 굴절+굴절   ( -91.5 dB)
+[step 12] UE x=  25.0 UE y=  12.4 UE z=   1.8 dominant = 2차 굴절+굴절   ( -91.7 dB)
+[step 13] UE x=  25.0 UE y=  12.2 UE z=   1.8 dominant = 1차 회절      ( -89.5 dB)
+[step 14] UE x=  25.0 UE y=  11.9 UE z=   1.8 dominant = 1차 회절      ( -86.7 dB)
+[step 15] UE x=  25.0 UE y=  11.7 UE z=   1.8 dominant = 1차 회절      ( -84.1 dB)
+[step 16] UE x=  25.0 UE y=  11.4 UE z=   1.8 dominant = 1차 회절      ( -85.1 dB)
+[step 17] UE x=  25.0 UE y=  11.1 UE z=   1.8 dominant = 1차 회절      ( -85.0 dB)
+[step 18] UE x=  25.0 UE y=  10.9 UE z=   1.8 dominant = 1차 회절      ( -85.0 dB)
+[step 19] UE x=  25.0 UE y=  10.6 UE z=   1.8 dominant = 1차 회절      ( -85.0 dB)
+Traceback (most recent call last):
+  File "/home/ejseo/SNIC2026/experiments/mobility_simulation.py", line 324, in <module>
+    all_x = [pos[0] for pos in ue_traj] + [bs_pos[0]]
+                               ^^^^^^^
+NameError: name 'ue_traj' is not defined

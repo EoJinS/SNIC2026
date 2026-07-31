@@ -1,0 +1,362 @@
+Help on class Paths in module sionna.rt.path_solvers.paths:
+
+class Paths(builtins.object)
+ |  Paths(scene: sionna.rt.scene.Scene, src_positions: mitsuba.Point3f, tgt_positions: mitsuba.Point3f, tx_velocities: mitsuba.Vector3f, rx_velocities: mitsuba.Vector3f, synthetic_array: bool, paths_buffer: sionna.rt.path_solvers.paths_buffer.PathsBuffer, rel_ant_positions_tx: mitsuba.Point3f | None, rel_ant_positions_rx: mitsuba.Point3f | None)
+ |  
+ |  Paths()
+ |  
+ |  Stores the simulated propagation paths
+ |  
+ |  Paths are generated for the loaded scene using a path solver, such as
+ |  :class:`~sionna.rt.PathSolver`. Please refer to the documentation of this
+ |  class for further details.
+ |  
+ |  :param scene: Scene for which paths are computed
+ |  :param src_positions: Positions of the sources
+ |  :param tgt_positions: Positions of the targets
+ |  :param tx_velocities: Velocities of the transmitters
+ |  :param rx_velocities: Velocities of the receivers
+ |  :param synthetic_array: If set to `True`, then the antenna arrays are applied synthetically
+ |  :param paths_buffer: Paths buffer storing the computed paths
+ |  :param rel_ant_positions_tx: Positions of the array elements with respect to the center of the transmitters. Only required if synthetic arrays are used.
+ |  :param rel_ant_positions_rx: Positions of the array elements with respect to the center of the receivers. Only required if synthetic arrays are used.
+ |  
+ |  Methods defined here:
+ |  
+ |  __init__(self, scene: sionna.rt.scene.Scene, src_positions: mitsuba.Point3f, tgt_positions: mitsuba.Point3f, tx_velocities: mitsuba.Vector3f, rx_velocities: mitsuba.Vector3f, synthetic_array: bool, paths_buffer: sionna.rt.path_solvers.paths_buffer.PathsBuffer, rel_ant_positions_tx: mitsuba.Point3f | None, rel_ant_positions_rx: mitsuba.Point3f | None)
+ |      Initialize self.  See help(type(self)) for accurate signature.
+ |  
+ |  cfr(self, frequencies: drjit.cuda.ad.Float, sampling_frequency: float = 1.0, num_time_steps: int = 1, normalize_delays: bool = True, normalize: bool = False, reverse_direction: bool = False, out_type: Literal['drjit', 'jax', 'numpy', 'tf', 'torch'] = 'drjit')
+ |      Compute the frequency response of the channel at ``frequencies``.
+ |      Optionally, time evolution of the channel can be simulated based
+ |      on the Doppler shifts of all paths.
+ |      
+ |      Given a channel impulse response
+ |      :math:`(a_i^\text{b}(t), \tau_{i}), 0 \leq i \leq M-1`, as computed
+ |      by :meth:`~sionna.rt.Paths.cir`,
+ |      the channel frequency response for the frequency :math:`f`
+ |      is computed as follows:
+ |      
+ |      .. math::
+ |          \widehat{h}(f, t) = \sum_{i=0}^{M-1}a_i^\text{b}(t) e^{-j2\pi f \tau_{i}}
+ |      
+ |      The time evolution of the channel is simulated as described in
+ |      the documentation of :meth:`~sionna.rt.Paths.cir`.
+ |      
+ |      :param frequencies: Frequencies [Hz] at which to compute the
+ |          channel response
+ |      
+ |      :param sampling_frequency: Frequency [Hz] at which the channel impulse
+ |          response is sampled
+ |      
+ |      :param num_time_steps: Number of time steps
+ |      
+ |      :param normalize_delays: If set to `True`, path delays are normalized
+ |          such that the first path between any pair of antennas of a
+ |          transmitter and receiver arrives at :math:`\tau = 0`.
+ |      
+ |      :param normalize: If set to `True`, the channel is normalized across
+ |          time and frequencies to ensure unit average energy.
+ |      
+ |      :param reverse_direction: If set to True, swaps receivers and
+ |          transmitters
+ |      
+ |      :param out_type: Name of the desired output type.
+ |          Currently supported are
+ |          `Dr.Jit <https://drjit.readthedocs.io/en/latest/reference.html>`_
+ |          ("drjit), `Numpy <https://numpy.org>`_ ("numpy"),
+ |          `Jax <https://jax.readthedocs.io/en/latest/index.html>`_ ("jax"),
+ |          `TensorFlow <https://www.tensorflow.org>`_ ("tf"),
+ |          and `PyTorch <https://pytorch.org>`_ ("torch").
+ |      
+ |      :return: Real and imaginary components of the baseband equivalent channel
+ |          coefficients :math:`a^{\text{b}}_{i}`
+ |      
+ |      :return type: Shape: [num_rx, num_rx_ant, num_tx, num_tx_ant,
+ |          num_time_steps, num_frequencies],
+ |          Type: :py:class:`Tuple[mi.TensorXf`
+ |          | :py:class:`np.array` | :py:class:`jax.array`
+ |          | :py:class:`tf.Tensor` | :py:class:`torch.tensor`
+ |  
+ |  cir(self, *, sampling_frequency: float = 1.0, num_time_steps: int = 1, normalize_delays: bool = True, reverse_direction: bool = False, out_type: Literal['drjit', 'jax', 'numpy', 'tf', 'torch'] = 'drjit')
+ |      Returns the baseband-equivalent channel impulse response :eq:`h_b`
+ |      which can be used for link simulations by other Sionna components.
+ |      Optionally, time evolution of the channel can be simulated based
+ |      on the Doppler shifts of all paths.
+ |      
+ |      The baseband equivalent channel coefficient :math:`a^{\text{b}}_{i}(t)`
+ |      at time :math:`t` is computed as :
+ |      
+ |      .. math::
+ |          a^{\text{b}}_{i}(t) = \underbrace{a_{i} e^{-j2 \pi f \tau_{i}}}_{a^{\text{b}}_{i} } \underbrace{e^{j 2\pi f_{\Delta, i} t}}_{\text{Doppler phase shift}}
+ |      
+ |      where :math:`i` is the index of an arbitrary path, :math:`a_{i}`
+ |      is the passband path coefficient (:attr:`~sionna.rt.Paths.a`),
+ |      :math:`\tau_{i}` is the path delay (:attr:`~sionna.rt.Paths.tau`),
+ |      :math:`f` is the carrier frequency, and :math:`f_{\Delta, i}` is the
+ |      Doppler shift of the :math:`i\text{th}` path.
+ |      
+ |      :param sampling_frequency: Frequency [Hz] at which the channel impulse
+ |          response is sampled
+ |      
+ |      :param num_time_steps: Number of time steps
+ |      
+ |      :param normalize_delays: If set to `True`, path delays are normalized
+ |          such that the first path between any pair of antennas of a
+ |          transmitter and receiver arrives at :math:`\tau = 0`
+ |      
+ |      :param reverse_direction: If set to True, swaps receivers and
+ |          transmitters
+ |      
+ |      :param out_type: Name of the desired output type.
+ |          Currently supported are
+ |          `Dr.Jit <https://drjit.readthedocs.io/en/latest/reference.html>`_
+ |          ("drjit), `Numpy <https://numpy.org>`_ ("numpy"),
+ |          `Jax <https://jax.readthedocs.io/en/latest/index.html>`_ ("jax"),
+ |          `TensorFlow <https://www.tensorflow.org>`_ ("tf"),
+ |          and `PyTorch <https://pytorch.org>`_ ("torch").
+ |      
+ |      :return:
+ |          Real and imaginary components of the baseband equivalent channel
+ |          coefficients :math:`a^{\text{b}}_{i}`
+ |      :return type: Shape: [num_rx, num_rx_ant, num_tx,
+ |          num_tx_ant, num_paths, num_time_steps],
+ |          Type: :py:class:`Tuple[mi.TensorXf, mi.TensorXf]`
+ |          | :py:class:`np.array` | :py:class:`jax.array`
+ |          | :py:class:`tf.Tensor` | :py:class:`torch.tensor`
+ |      
+ |      :return: Paths delays :math:`\tau_{i}` [s]
+ |      :return type: Shape: [num_rx, num_rx_ant, num_tx,
+ |          num_tx_ant, num_paths] or [num_rx, num_tx, num_paths],
+ |          Type: :py:class:`mi.TensorXf`
+ |          | :py:class:`np.array` | :py:class:`jax.array`
+ |          | :py:class:`tf.Tensor` | :py:class:`torch.tensor`
+ |  
+ |  taps(self, bandwidth: float, l_min: int, l_max: int, sampling_frequency: float | None = None, num_time_steps: int = 1, normalize: bool = False, normalize_delays: bool = True, reverse_direction: bool = False, out_type: Literal['drjit', 'jax', 'numpy', 'tf', 'torch'] = 'drjit')
+ |      Returns the channel taps forming the discrete complex
+ |      baseband-equivalent channel impulse response
+ |      
+ |      This function assumes that a sinc filter is used for pulse shaping and
+ |      receive filtering. Therefore, given a channel impulse response
+ |      :math:`(a_{i}^\text{b}(t), \tau_{i}), 0 \leq i \leq M-1` (which can be
+ |      computed by :meth:`~sionna.rt.Paths.cir`), the
+ |      :math:`\ell\text{th}` channel tap at sample instance :math:`n`
+ |      is computed as follows (see (Eq. 2.34) [Tse]_):
+ |      
+ |      .. math::
+ |          \bar{h}_{n, \ell}
+ |          = \sum_{i=0}^{M-1} a_{i}^\text{b}\left(\frac{n}{W}\right)
+ |              \text{sinc}\left( \ell - W\tau_{m} \right)
+ |      
+ |      for :math:`\ell` ranging from ``l_min`` to ``l_max``, and where :math:`W` is
+ |      the ``bandwidth``.
+ |      
+ |      This function allows for an arbitrary ``sampling_frequency`` at which
+ |      the channel taps are sampled. By default, it is equal to the
+ |      ``bandwidth``.
+ |      
+ |      :param bandwidth: Bandwidth [Hz] to which the channel impulse response
+ |          will be limited
+ |      
+ |      :param l_min: Smallest time-lag for the discrete complex
+ |          baseband-equivalent channel (:math:`L_{\text{min}}`)
+ |      
+ |      :param l_max: Largest time-lag for the discrete complex
+ |          baseband-equivalent channel (:math:`L_{\text{max}}`)
+ |      
+ |      :param sampling_frequency: Frequency [Hz] at which the channel impulse
+ |          response is sampled. If set to `None`, the ``bandwidth`` is used
+ |          instead.
+ |      
+ |      :param num_time_steps: Number of time steps
+ |      
+ |      :param normalize: If set to `True`, the channel is normalized such that
+ |          the average total energy of the channel taps is equal to one.
+ |      
+ |      :param normalize_delays: If set to `True`, path delays are normalized
+ |          such that the first path between any pair of antennas of a
+ |          transmitter and receiver arrives at :math:`\tau = 0`.
+ |      
+ |      :param reverse_direction: If set to True, swaps receivers and
+ |          transmitters
+ |      
+ |      :param out_type: Name of the desired output type.
+ |          Currently supported are
+ |          `Dr.Jit <https://drjit.readthedocs.io/en/latest/reference.html>`_
+ |          ("drjit), `Numpy <https://numpy.org>`_ ("numpy"),
+ |          `Jax <https://jax.readthedocs.io/en/latest/index.html>`_ ("jax"),
+ |          `TensorFlow <https://www.tensorflow.org>`_ ("tf"),
+ |          and `PyTorch <https://pytorch.org>`_ ("torch").
+ |      
+ |      :return: Channel tap coefficients
+ |      :return type: Shape: [num_rx, num_rx_ant, num_tx, num_tx_ant,
+ |          num_time_steps, l_max - l_min + 1],
+ |          Type: :py:class:`Tuple[mi.TensorXf, mi.TensorXf]`
+ |          | :py:class:`np.array` | :py:class:`jax.array`
+ |          | :py:class:`tf.Tensor` | :py:class:`torch.tensor`
+ |  
+ |  ----------------------------------------------------------------------
+ |  Readonly properties defined here:
+ |  
+ |  a
+ |      Real and imaginary components of the channel coefficients [unitless, linear scale]
+ |      
+ |      :type: :py:class:`Tuple[mi.TensorXf [num_rx, num_rx_ant, num_tx, num_tx_ant, num_paths], mi.TensorXf [num_rx, num_rx_ant, num_tx, num_tx_ant, num_paths]]`
+ |  
+ |  doppler
+ |      Doppler shift for each path
+ |      
+ |      To understand how Doppler shifts are computed, let us consider a single propagation path undergoing
+ |      :math:`n` scattering processes, e.g., reflection, diffuse scattering,
+ |      refraction, as shown in the figure below.
+ |      
+ |      .. figure:: ../figures/doppler.png
+ |          :align: center
+ |      
+ |      The object on which lies the :math:`i\text{th}` scattering point has the velocity vector
+ |      :math:`\hat{\mathbf{v}}_i` and the outgoing ray direction at this point is
+ |      denoted :math:`\hat{\mathbf{k}}_i`. The first and last point correspond to the transmitter
+ |      and receiver, respectively. We therefore have
+ |      
+ |      .. math::
+ |      
+ |          \hat{\mathbf{k}}_0 &= \hat{\mathbf{r}}(\theta_{\text{T}}, \varphi_{\text{T}})\\
+ |          \hat{\mathbf{k}}_{n} &= -\hat{\mathbf{r}}(\theta_{\text{R}}, \varphi_{\text{R}})
+ |      
+ |      where :math:`(\theta_{\text{T}}, \varphi_{\text{T}})` are the AoDs,
+ |      :math:`(\theta_{\text{R}}, \varphi_{\text{R}})` are the AoAs, and :math:`\hat{\mathbf{r}}(\theta,\varphi)` is defined in :eq:`spherical_vecs`.
+ |      
+ |      If the transmitter emits a signal with frequency :math:`f`, the receiver
+ |      will observe the signal at frequency :math:`f'=f + f_\Delta`, where :math:`f_\Delta` is the Doppler
+ |      shift, which can be computed as [Wiffen2018]_
+ |      
+ |      .. math::
+ |      
+ |          f' = f \prod_{i=0}^n \frac{1 - \frac{\mathbf{v}_{i+1}^\mathsf{T}\hat{\mathbf{k}}_i}{c}}{1 - \frac{\mathbf{v}_{i}^\mathsf{T}\hat{\mathbf{k}}_i}{c}}.
+ |      
+ |      Under the assumption that :math:`\lVert \mathbf{v}_i \rVert\ll c`, we can apply the Taylor expansion :math:`(1-x)^{-1}\approx 1+x`, for :math:`x\ll 1`, to the previous equation
+ |      to obtain
+ |      
+ |      .. math::
+ |      
+ |          f' &\approx f \prod_{i=0}^n \left(1 - \frac{\mathbf{v}_{i+1}^\mathsf{T}\hat{\mathbf{k}}_i}{c}\right)\left(1 + \frac{\mathbf{v}_{i}^\mathsf{T}\hat{\mathbf{k}}_i}{c}\right)\\
+ |             &\approx f \left(1 + \sum_{i=0}^n \frac{\mathbf{v}_{i}^\mathsf{T}\hat{\mathbf{k}}_i -\mathbf{v}_{i+1}^\mathsf{T}\hat{\mathbf{k}}_i}{c} \right)
+ |      
+ |      where the second line results from ignoring terms in :math:`c^{-2}`. Solving for :math:`f_\Delta`, grouping terms with the same :math:`\mathbf{v}_i` together, and using :math:`f=c/\lambda`, we obtain
+ |      
+ |      .. math::
+ |      
+ |          f_\Delta = \frac{1}{\lambda}\left(\mathbf{v}_{0}^\mathsf{T}\hat{\mathbf{k}}_0 - \mathbf{v}_{n+1}^\mathsf{T}\hat{\mathbf{k}}_n + \sum_{i=1}^n \mathbf{v}_{i}^\mathsf{T}\left(\hat{\mathbf{k}}_i-\hat{\mathbf{k}}_{i-1} \right) \right) \qquad \text{[Hz]}.
+ |      
+ |      :type: :py:class:`mi.TensorXf [num_rx, num_rx_ant, num_tx, num_tx_ant, num_paths] or [num_rx, num_tx, num_paths]`:
+ |  
+ |  interactions
+ |      Interaction type represented using
+ |      :class:`~sionna.rt.constants.InteractionType`
+ |      
+ |      :type: :py:class:`mi.TensorXu [max_depth, num_rx, num_rx_ant, num_tx, num_tx_ant, num_paths] or [max_depth, num_rx, num_tx, num_paths]`
+ |  
+ |  num_rx
+ |      Number of receivers
+ |      
+ |      :type: :py:class:`int`
+ |  
+ |  num_tx
+ |      Number of transmitters
+ |      
+ |      :type: :py:class:`int`
+ |  
+ |  objects
+ |      IDs of the intersected objects. Invalid objects are represented by
+ |      :data:`~sionna.rt.constants.INVALID_SHAPE`.
+ |      
+ |      :type: :py:class:`mi.TensorXu [max_depth, num_rx, num_rx_ant, num_tx, num_tx_ant, num_paths] or [max_depth, num_rx, num_tx, num_paths]`
+ |  
+ |  phi_r
+ |      Azimuth  angles of arrival [rad]
+ |      
+ |      :type: :py:class:`mi.TensorXf [num_rx, num_rx_ant, num_tx, num_tx_ant, num_paths] or [num_rx, num_tx, num_paths]`
+ |  
+ |  phi_t
+ |      Azimuth  angles of departure [rad]
+ |      
+ |      :type: :py:class:`mi.TensorXf [num_rx, num_rx_ant, num_tx, num_tx_ant, num_paths] or [num_rx, num_tx, num_paths]`
+ |  
+ |  primitives
+ |      Indices of the intersected primitives. Invalid primitives are
+ |      represented by :data:`~sionna.rt.constants.INVALID_PRIMITIVE`.
+ |      
+ |      :type: :py:class:`mi.TensorXu [max_depth, num_rx, num_rx_ant, num_tx, num_tx_ant, num_paths] or [max_depth, num_rx, num_tx, num_paths]`
+ |  
+ |  rx_array
+ |      Antenna array used by receivers
+ |      
+ |      :type: :class:`~sionna.rt.AntennaArray`
+ |  
+ |  sources
+ |      Positions of the paths sources. If synthetic
+ |      arrays are not used (:attr:`~sionna.rt.Paths.synthetic_array` is `False`),
+ |      then every transmit antenna is modeled as a source of paths.
+ |      Otherwise, transmitters are modelled as if they had a single antenna
+ |      located at their :attr:`~sionna.rt.RadioDevice.position`. The channel
+ |      responses for each individual antenna of the arrays are then computed
+ |      "synthetically" by applying appropriate phase shifts.
+ |      
+ |      :type: :py:class:`mi.Point3f`
+ |  
+ |  synthetic_array
+ |      Flag indicating if synthetic arrays were used to trace the paths
+ |      
+ |      :type: :py:class:`bool`
+ |  
+ |  targets
+ |      Positions of the paths targets. If synthetic
+ |      arrays are not used (:attr:`~sionna.rt.Paths.synthetic_array` is `False`),
+ |      then every receiver antenna is modeled as a source of paths.
+ |      Otherwise, receivers are modelled as if they had a single antenna
+ |      located at their :attr:`~sionna.rt.RadioDevice.position`. The channel
+ |      responses for each individual antenna of the arrays are then computed
+ |      "synthetically" by applying appropriate phase shifts.
+ |      
+ |      :type: :py:class:`mi.Point3f`
+ |  
+ |  tau
+ |      Paths delays [s]
+ |      
+ |      :type: :py:class:`mi.TensorXf [num_rx, num_rx_ant, num_tx, num_tx_ant, num_paths] or [num_rx, num_tx, num_paths]`
+ |  
+ |  theta_r
+ |      Zenith  angles of arrival [rad]
+ |      
+ |      :type: :py:class:`mi.TensorXf [num_rx, num_rx_ant, num_tx, num_tx_ant, num_paths] or [num_rx, num_tx, num_paths]`
+ |  
+ |  theta_t
+ |      Zenith  angles of departure [rad]
+ |      
+ |      :type: :py:class:`mi.TensorXf [num_rx, num_rx_ant, num_tx, num_tx_ant, num_paths] or [num_rx, num_tx, num_paths]`
+ |  
+ |  tx_array
+ |      Antenna array used by transmitters
+ |      
+ |      :type: :class:`~sionna.rt.AntennaArray`
+ |  
+ |  valid
+ |      Flags indicating valid paths
+ |      
+ |      :type: :py:class:`mi.TensorXb [num_rx, num_rx_ant, num_tx, num_tx_ant, num_paths]`
+ |  
+ |  vertices
+ |      Paths' vertices, i.e., the interaction points of the paths with the
+ |      scene
+ |      
+ |      :type: :py:class:`mi.TensorXf [max_depth, num_rx, num_rx_ant, num_tx, num_tx_ant, num_paths, 3] or [max_depth, num_rx, num_tx, num_paths, 3]`
+ |  
+ |  ----------------------------------------------------------------------
+ |  Data descriptors defined here:
+ |  
+ |  __dict__
+ |      dictionary for instance variables
+ |  
+ |  __weakref__
+ |      list of weak references to the object
+

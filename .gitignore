@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+*.partial.npz
+
+legacy/
+POSTECH_scene/
+Data/
+results/

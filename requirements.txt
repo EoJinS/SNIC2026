@@ -1,0 +1,14 @@
+# Core (needed for everything under pipeline/GMM_CE/, CPU only):
+numpy==1.26.4
+scipy==1.17.1
+matplotlib==3.10.9
+
+# Ray tracing (only needed to *regenerate* Data/{train,test}_M{4,16}_F64_subregion100.npz
+# from the POSTECH scene -- not needed to just run the GMM-CE experiments on the
+# datasets already included in Data/):
+sionna-rt==2.0.1
+tensorflow==2.21.0
+
+# Optional GPU acceleration for run_subregion_experiments.py --gpu (torch-based
+# batched EM in pipeline/GMM_CE/gmmce/gpu_gmm.py). Not required otherwise.
+# torch==2.2.2

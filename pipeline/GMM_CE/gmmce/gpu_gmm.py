@@ -270,6 +270,89 @@ def fit_toeplitz_gmm(X, K, dims, n_iter=25, reg=1e-6, seed=None, verbose=False, 
                covs.cpu().numpy().astype(np.complex128))
 
 
+@_struct_precision
+def fit_weichselberger_gmm(H, K, n_iter=25, reg=1e-6, seed=None, tol=1e-4, verbose=False):
+    """GPU version of complex_gmm.fit_weichselberger_gmm -- Option B,
+    responsibility-weighted per-component Tx/Rx eigenbasis learning (see
+    Weichselberger_GMM_OptionB_Experiment_Guide.pdf and the CPU
+    docstring for the full derivation/references to the guide's
+    equations). H: (N, Nc, Nt) numpy array (NOT vec()'d).
+
+    Batches every N-sized reduction (the Rr,k/Rt,k marginal covariances
+    across all K at once via one big einsum, and the eigendecomposition
+    via torch's batched `linalg.eigh`); only the O(N*Nc*Nt)-sized
+    per-component transform (needed for both the E-step log-lik and the
+    M-step's Omega_k update) loops over K -- materializing that for
+    every k at once would need a (K,N,Nc,Nt) tensor, infeasible at
+    paper50 scale (K=128, N=1e5)."""
+    from .complex_gmm import _kmeanspp_init
+    from .pilots import vec
+    rng = np.random.default_rng(seed)
+    N, Nc, Nt = H.shape
+    D = Nc * Nt
+    reg_eff = reg if _DT == torch.complex128 else max(reg, 1e-4)
+
+    Hg = _t(H)                                    # (N, Nc, Nt)
+    centers_np = _kmeanspp_init(vec(H), K, rng)
+    Xvec = _t(vec(H))
+    centers = _t(centers_np)
+    x2 = (Xvec.abs() ** 2).sum(1)
+    c2 = (centers.abs() ** 2).sum(1)
+    cross = (Xvec @ centers.conj().T).real
+    hard = torch.argmin(x2.unsqueeze(1) + c2.unsqueeze(0) - 2 * cross, dim=1)
+    gamma = torch.zeros((N, K), dtype=_rt(), device=_DEV)
+    gamma[torch.arange(N, device=_DEV), hard] = 1.0
+
+    def moment_step(gamma):
+        Nk = gamma.sum(0).clamp_min(1e-8)                              # (K,)
+        weights = Nk / N
+        P = torch.matmul(Hg, Hg.conj().transpose(-1, -2))              # (N,Nc,Nc): Hn Hn^H
+        Q = torch.matmul(Hg.conj().transpose(-1, -2), Hg)              # (N,Nt,Nt): Hn^H Hn
+        Rr = _herm(torch.einsum('nk,nil->kil', gamma.to(_DT), P) / Nk.to(_DT).view(-1, 1, 1))
+        Rt = _herm(torch.einsum('nk,njl->kjl', gamma.to(_DT), Q) / Nk.to(_DT).view(-1, 1, 1))
+        evr, Ur = torch.linalg.eigh(Rr)                                # ascending eigenvalues
+        evt, Ut = torch.linalg.eigh(Rt)
+        Ur, Ut = Ur.flip(-1), Ut.flip(-1)                               # -> descending (guide Sec 3.3)
+        Omega = torch.empty((K, Nc, Nt), dtype=_rt(), device=_DEV)
+        for k in range(K):
+            H1 = torch.einsum('pi,npt->nit', Ur[k].conj(), Hg)
+            Htilde = torch.einsum('nit,tj->nij', H1, Ut[k])
+            Omega[k] = torch.einsum('n,nij->ij', gamma[:, k], Htilde.abs() ** 2) / Nk[k]
+        return weights, Ur, Ut, Omega.clamp_min(reg_eff)
+
+    weights, Ur, Ut, Omega = moment_step(gamma)
+    NcNt_logpi = Nc * Nt * float(np.log(np.pi))
+
+    prev = -np.inf
+    for it in range(n_iter):
+        log_lik = torch.empty((N, K), dtype=_rt(), device=_DEV)
+        for k in range(K):
+            H1 = torch.einsum('pi,npt->nit', Ur[k].conj(), Hg)
+            Htilde = torch.einsum('nit,tj->nij', H1, Ut[k])
+            log_lik[:, k] = (-NcNt_logpi - torch.log(Omega[k]).sum()
+                              - (Htilde.abs() ** 2 / Omega[k].unsqueeze(0)).sum(dim=(1, 2)))
+        logp = log_lik + torch.log(weights + 1e-300).unsqueeze(0)
+        ln = torch.logsumexp(logp, dim=1, keepdim=True)
+        gamma = torch.exp(logp - ln)
+        total_ll = float(ln.sum().item())
+        if verbose:
+            print(f"[gpu-weichselberger] iter {it}: avg ll = {total_ll/N:.4f}")
+        weights, Ur, Ut, Omega = moment_step(gamma)
+        if _converged(total_ll, prev, tol):
+            break
+        prev = total_ll
+
+    covs = torch.empty((K, D, D), dtype=_DT, device=_DEV)
+    for k in range(K):
+        Fk = torch.kron(Ut[k].conj(), Ur[k])                            # matches gmmce.pilots.vec()
+        d = Omega[k].t().contiguous().view(-1)                          # vec(Omega_k), same convention
+        covs[k] = _herm((Fk * d.to(_DT).unsqueeze(0)) @ Fk.conj().T) + reg_eff * _eye(D)
+    means = torch.zeros((K, D), dtype=_DT, device=_DEV)
+    return GMM(weights.cpu().numpy().astype(np.float64),
+               means.cpu().numpy().astype(np.complex128),
+               covs.cpu().numpy().astype(np.complex128))
+
+
 def combine_kronecker(gmm_time: GMM, gmm_freq: GMM, X_train, reg=1e-6) -> GMM:
     Kt, Kc = gmm_time.K, gmm_freq.K
     K = Kt * Kc
@@ -333,6 +416,7 @@ def patch():
     pl.fit_full_gmm = fit_full_gmm
     pl.fit_toeplitz_gmm = fit_toeplitz_gmm
     pl.fit_circulant_gmm = fit_circulant_gmm
+    pl.fit_weichselberger_gmm = fit_weichselberger_gmm
     cg.fit_diagonal_gmm = fit_diagonal_gmm
     pl.combine_kronecker = combine_kronecker
     kc.combine_kronecker = combine_kronecker

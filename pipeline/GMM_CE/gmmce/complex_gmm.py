@@ -23,6 +23,7 @@ import numpy as np
 from scipy.linalg import cho_factor, cho_solve
 
 from .structured import block_operator
+from .pilots import vec
 
 
 @dataclass
@@ -185,6 +186,130 @@ def fit_circulant_gmm(X: np.ndarray, K: int, dims: list[int], n_iter: int = 25, 
     for k in range(K):
         covs[k] = (Fh * d[k][None, :]) @ F
     return GMM(gmm_tilde.weights, means, covs)
+
+
+# ---------------------------------------------------------------------
+# Weichselberger-structured GMM, "Option B": component-wise Tx/Rx
+# eigenbasis learning, per Weichselberger_GMM_OptionB_Experiment_Guide.pdf.
+# ---------------------------------------------------------------------
+
+def _weichselberger_moment_step(H: np.ndarray, gamma: np.ndarray, K: int, reg: float):
+    """M-step A/B/C of Algorithm 1: for each component k, the
+    responsibility-weighted Rx/Tx marginal covariances (Eqs 8-9), their
+    eigenbases Ur,k / Ut,k (Eq 14, descending eigenvalues), and the
+    coupling matrix Omega_k (Eq 16). H: (N, Nc, Nt)."""
+    N, Nc, Nt = H.shape
+    Nk = np.maximum(gamma.sum(axis=0), 1e-8)
+    weights = Nk / N
+    Ur = np.empty((K, Nc, Nc), dtype=np.complex128)
+    Ut = np.empty((K, Nt, Nt), dtype=np.complex128)
+    Omega = np.empty((K, Nc, Nt))
+    for k in range(K):
+        Hw = H * np.sqrt(gamma[:, k])[:, None, None]
+        A = Hw.transpose(0, 2, 1).reshape(N * Nt, Nc)      # rows = (n,t)
+        Rr = (A.T @ A.conj()) / Nk[k]                       # (Eq 8) sum_n gamma Hn Hn^H
+        Rr = 0.5 * (Rr + Rr.conj().T)
+        B = Hw.reshape(N * Nc, Nt)                          # rows = (n,c)
+        Rt = (B.conj().T @ B) / Nk[k]                        # (Eq 9) sum_n gamma Hn^H Hn
+        Rt = 0.5 * (Rt + Rt.conj().T)
+
+        evr, Urk = np.linalg.eigh(Rr)
+        Urk = Urk[:, np.argsort(-evr)]
+        evt, Utk = np.linalg.eigh(Rt)
+        Utk = Utk[:, np.argsort(-evt)]
+
+        H1 = np.einsum('pi,npt->nit', Urk.conj(), H)        # Ur,k^H Hn  (Eq 6)
+        Htilde = np.einsum('nit,tj->nij', H1, Utk)          # (Ur,k^H Hn Ut,k)
+        Om = np.einsum('n,nij->ij', gamma[:, k], np.abs(Htilde) ** 2) / Nk[k]  # (Eq 16)
+        Ur[k], Ut[k], Omega[k] = Urk, Utk, np.maximum(Om, reg)   # (Eq 17) floor
+    return weights, Ur, Ut, Omega
+
+
+def _weichselberger_loglik(H: np.ndarray, Ur: np.ndarray, Ut: np.ndarray, Omega: np.ndarray) -> np.ndarray:
+    """log p(Hn | k) for every n, k (Eq 7). Returns (N, K)."""
+    N, Nc, Nt = H.shape
+    K = Ur.shape[0]
+    log_lik = np.empty((N, K))
+    for k in range(K):
+        H1 = np.einsum('pi,npt->nit', Ur[k].conj(), H)
+        Htilde = np.einsum('nit,tj->nij', H1, Ut[k])
+        log_lik[:, k] = (-Nc * Nt * np.log(np.pi) - np.sum(np.log(Omega[k]))
+                          - np.sum(np.abs(Htilde) ** 2 / Omega[k][None, :, :], axis=(1, 2)))
+    return log_lik
+
+
+def _weichselberger_dense_covs(Ur: np.ndarray, Ut: np.ndarray, Omega: np.ndarray, reg: float) -> np.ndarray:
+    """Build the dense (K, D, D) covariances (Eq 3), D = Nc*Nt, in the
+    usual vec()-ordered domain, for compatibility with cme_estimate /
+    evaluate_joint (which only ever see a generic dense GMM)."""
+    K, Nc, _ = Ur.shape
+    Nt = Ut.shape[1]
+    D = Nc * Nt
+    covs = np.empty((K, D, D), dtype=np.complex128)
+    for k in range(K):
+        Fk = np.kron(Ut[k].conj(), Ur[k])          # Ut,k^* (x) Ur,k, matches gmmce.pilots.vec()
+        d = Omega[k].flatten(order='F')            # vec(Omega_k), same column-major convention
+        C = (Fk * d[None, :]) @ Fk.conj().T
+        covs[k] = 0.5 * (C + C.conj().T) + reg * np.eye(D)
+    return covs
+
+
+def fit_weichselberger_gmm(H: np.ndarray, K: int, n_iter: int = 25, reg: float = 1e-6,
+                            seed: int | None = None, tol: float = 1e-4, verbose: bool = False) -> GMM:
+    """Weichselberger-structured GMM, "Option B" (component-wise Tx/Rx
+    eigenbasis learning): each component k gets its OWN Rx/Tx eigenbasis
+    Ur,k (Nc,Nc) / Ut,k (Nt,Nt), re-estimated every M-step from the
+    responsibility-weighted marginal covariances of that component
+    (Eqs 8-9, 12-14), plus a coupling matrix Omega_k (Nc,Nt, Eq 16) of
+    per-eigenmode-pair power -- a direct weighted moment estimate given
+    that basis (the guide's own caveat: only Omega_k's update is an exact
+    ML step for a *fixed* basis; re-deriving Ur,k/Ut,k from the marginal
+    covariance's eigenvectors each iteration is "moment fitting", not an
+    exact joint-likelihood M-step). This is strictly more general than
+    `kron` (which forces one rank-1 outer-product coupling shared by a
+    SINGLE basis pair across the corpus) since every component here gets
+    its own basis AND an arbitrary (non-separable) coupling matrix.
+
+    Unlike every other `fit_*_gmm` here, H is (N, Nc, Nt) channel
+    MATRICES (not vec()'d) -- Ur,k/Ut,k act directly on the two channel
+    axes. Assumes a ZERO-MEAN per-component model (the guide's Eq 1),
+    unlike full/b-toep/b-circ/kron/diagonal here, which do fit a mean.
+
+    Init (guide Sec. 5, "no separate warm-start model" path): k-means++
+    centers on vec()'d data, one hard nearest-center assignment, then one
+    moment_step to seed Ur/Ut/Omega before the main E/M loop."""
+    N, Nc, Nt = H.shape
+    rng = np.random.default_rng(seed)
+
+    Xvec = vec(H)
+    centers = _kmeanspp_init(Xvec, K, rng)
+    x2 = np.sum(np.abs(Xvec) ** 2, axis=1)
+    c2 = np.sum(np.abs(centers) ** 2, axis=1)
+    cross = np.real(Xvec @ centers.conj().T)
+    hard = np.argmin(x2[:, None] + c2[None, :] - 2 * cross, axis=1)
+    gamma = np.zeros((N, K))
+    gamma[np.arange(N), hard] = 1.0
+
+    weights, Ur, Ut, Omega = _weichselberger_moment_step(H, gamma, K, reg)
+
+    prev_ll = -np.inf
+    for it in range(n_iter):
+        log_lik = _weichselberger_loglik(H, Ur, Ut, Omega)
+        log_resp = np.log(weights[None, :] + 1e-300) + log_lik
+        m = log_resp.max(axis=1, keepdims=True)
+        log_norm = m + np.log(np.sum(np.exp(log_resp - m), axis=1, keepdims=True) + 1e-300)
+        gamma = np.exp(log_resp - log_norm)
+        total_ll = float(np.sum(log_norm))
+        if verbose:
+            print(f"[weichselberger] iter {it}: avg log-lik = {total_ll / N:.4f}")
+        weights, Ur, Ut, Omega = _weichselberger_moment_step(H, gamma, K, reg)
+        if abs(total_ll - prev_ll) < tol * abs(prev_ll) + 1e-8:
+            break
+        prev_ll = total_ll
+
+    means = np.zeros((K, Nc * Nt), dtype=np.complex128)
+    covs = _weichselberger_dense_covs(Ur, Ut, Omega, reg)
+    return GMM(weights, means, covs)
 
 
 # ---------------------------------------------------------------------

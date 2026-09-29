@@ -53,10 +53,11 @@ class SubregionChannels:
     calib / test splits, normalized so E[||vec(H)||^2] = Nc*Nt (the
     paper's channel normalization)."""
 
-    def __init__(self, m: int = 16, nc_ds: int = 1, nt_ds: int = 1, seed: int = 0):
+    def __init__(self, m: int = 16, nc_ds: int = 1, nt_ds: int = 1, seed: int = 0, data_tag: str = ""):
         self.m, self.nc_ds, self.nt_ds = m, nc_ds, nt_ds
-        train_npz = os.path.join(_DATA, f"train_M{m}_F64_subregion100.npz")
-        test_npz = os.path.join(_DATA, f"test_M{m}_F64_subregion100.npz")
+        tag = f"_{data_tag}" if data_tag else ""
+        train_npz = os.path.join(_DATA, f"train_M{m}_F64_subregion100{tag}.npz")
+        test_npz = os.path.join(_DATA, f"test_M{m}_F64_subregion100{tag}.npz")
         tr = np.load(train_npz)
         te = np.load(test_npz)
         self._train = _reshape(np.asarray(tr["h"]), m, nc_ds, nt_ds)

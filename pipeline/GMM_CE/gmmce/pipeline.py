@@ -13,13 +13,13 @@ import numpy as np
 
 from .channel_model import SystemConfig
 from .pilots import PilotGrid, vec
-from .complex_gmm import GMM, fit_full_gmm, fit_toeplitz_gmm, fit_circulant_gmm
+from .complex_gmm import GMM, fit_full_gmm, fit_toeplitz_gmm, fit_circulant_gmm, fit_weichselberger_gmm
 from .kron_combine import combine_kronecker
 from .cascade import Cascade2x1D
 from .cme import cme_estimate, responsibilities_only, mean_components_for_responsibility
 from .pdp_ds import pdp_ds_kron_estimate, pdp_ds_2x1d_estimate
 
-JOINT_VARIANTS = ("full", "b-toep", "b-circ", "kron")
+JOINT_VARIANTS = ("full", "b-toep", "b-circ", "kron", "Weichselberger")
 CASCADE_VARIANTS = ("2x1D", "2x1D-toep", "2x1D-circ")
 ALL_GMM_VARIANTS = JOINT_VARIANTS + CASCADE_VARIANTS
 PDP_DS_VARIANTS = ("PDP+DS kron", "PDP+DS 2x1D")
@@ -37,6 +37,7 @@ class TrainedModels:
     gmm_full: GMM = None
     gmm_btoep: GMM = None
     gmm_bcirc: GMM = None
+    gmm_weichselberger: GMM = None
     gmm_time: GMM = None       # unconstrained, dim Nt, Kt comps (for kron / 2x1D)
     gmm_freq: GMM = None       # unconstrained, dim Nc, Kc comps (for kron / 2x1D)
     gmm_time_2x1d: GMM = None  # unconstrained, dim Nt, Kt_2x1d comps (for plain 2x1D)
@@ -84,6 +85,8 @@ def train_all(H_train: np.ndarray, grid: PilotGrid, cfg: SystemConfig,
         m.gmm_btoep = fit_toeplitz_gmm(Xtr, K=K, dims=[cfg.Nt, cfg.Nc], n_iter=n_iter_toep, seed=seed)
     if "b-circ" in which:
         m.gmm_bcirc = fit_circulant_gmm(Xtr, K=K, dims=[cfg.Nt, cfg.Nc], n_iter=n_iter, seed=seed)
+    if "Weichselberger" in which:
+        m.gmm_weichselberger = fit_weichselberger_gmm(H_train, K=K, n_iter=n_iter, seed=seed)
 
     need_kron = "kron" in which
     need_2x1d = "2x1D" in which

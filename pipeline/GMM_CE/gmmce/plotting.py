@@ -21,6 +21,7 @@ STYLE = {
     "GMM kron": dict(color="black", marker="s", linestyle=":", markerfacecolor="none"),
     "GMM b-toep": dict(color="olive", marker="^", linestyle="-"),
     "GMM b-circ": dict(color="red", marker="^", linestyle="-."),
+    "GMM Weichselberger": dict(color="tab:orange", marker="v", linestyle="-"),
     "GMM 2x1D": dict(color="tab:purple", marker="d", linestyle="-"),
     "GMM 2x1D-toep": dict(color="olive", marker="^", linestyle="--"),
     "GMM 2x1D-circ": dict(color="red", marker="d", linestyle="-."),

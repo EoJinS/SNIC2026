@@ -1,36 +1,37 @@
 """
 Run the GMM_CE structured-covariance experiments (Fesl et al., Asilomar
-2022) on the POSITION-ONLY ray-traced POSTECH ``subregion100`` channels
-(1xM TX ULA x F=64 subcarriers, one snapshot per position -- the "2-D
-EM map" regime), instead of the synthetic doubly-selective model in
-``gmmce/channel_model.py``.  Default ``--m 4`` (1x4 TX array, D=256);
-``--m 16`` uses the 16-element array (D=1024, or 512 with the default
-subcarrier decimation).
+2022) on POSITION-ONLY ray-traced POSTECH ``subregion100`` channels laid
+out on Fesl's OWN axes -- SISO, F subcarriers x S OFDM symbols per
+position (a fixed UE speed, random heading) -- instead of
+``run_subregion_experiments.py``'s (subcarrier, TX-antenna) proxy. That
+MISO space-frequency script and its data (``gmmce/subregion_data.py``,
+``results_subregion_M{m}*/``) are untouched; this is an additive sibling
+sharing the same estimator library (``gmmce/pipeline.py`` et al., which is
+axis-agnostic -- it only ever sees generic ``(Nc, Nt)``).
 
-Axis mapping (see ``gmmce/subregion_data.py``):
-    Nc <- subcarrier / frequency   (delay-stationary -> Toeplitz)
-    Nt <- antenna / ULA element    (angle-stationary -> Toeplitz)
-    C = kron(C_ant, C_freq)   <->   the paper's kron(C_time, C_freq)
+Axis mapping (see ``gmmce/subregion_tf_data.py``):
+    Nc <- subcarrier / frequency   (delay-stationary   -> Toeplitz)
+    Nt <- OFDM symbol / time       (Doppler-stationary  -> Toeplitz)
+    C = kron(C_time, C_freq)   <->   exactly the paper's own kron ordering
 
-There is no velocity axis here, so -- unlike the paper's Fig. 3 -- there
-is a single NMSE-vs-SNR curve set (no v=3 km/h vs v in [0,300] km/h
-split).  Pilots default to FULL (A = I: every antenna x subcarrier entry
-observed under noise); ``--comb-spacing s`` instead observes only every
-s-th subcarrier (all antennas) -> Np = ceil(Nc/s)*Nt, a genuine
-interpolation problem where the covariance prior does the work.
+Data: ``generate_channels_subregion100_siso_tf.py`` (S=14 symbols, F=64
+subcarriers, v=10 m/s, D=896). Unlike the MISO driver there is still a
+single NMSE-vs-SNR curve set (no separate v-sweep -- one representative
+mobility operating point, see that script's docstring), but the time axis
+here is the paper's actual OFDM-symbol axis, not an antenna-array proxy.
 
 Three plots (paper Fig. 3 / Fig. 4a / Fig. 4b), same estimator set,
 legend, colours and markers as ``gmmce/plotting.py``:
     nmse_vs_snr.png         NMSE vs SNR
     nmse_vs_training.png     NMSE vs training data
     nmse_vs_components.png    NMSE vs GMM components
-into ``results_subregion_M{m}[_comb{s}]/``.
+into ``results_subregion_tf[_comb{s}][_{scale}]/``.
 
-    python run_subregion_experiments.py --scale quick                       # 1x4 TX, full pilot
-    python run_subregion_experiments.py --scale quick --m 16                # 1x16 TX, D=512
-    python run_subregion_experiments.py --scale quick --comb-spacing 4      # 1x4 TX, comb-4
-    python run_subregion_experiments.py --scale quick --comb-spacing 8      # 1x4 TX, comb-8
-    python run_subregion_experiments.py --replot --m 4 --comb-spacing 4     # redraw from JSON
+    python run_subregion_tf_experiments.py --scale quick                     # full pilot, smoke test (CPU)
+    python run_subregion_tf_experiments.py                                   # full pilot, paper50 (K=128,N=1e5,n_iter=50), GPU (default)
+    python run_subregion_tf_experiments.py --comb-spacing 8                  # freq-comb-8 pilot, paper50, GPU
+    python run_subregion_tf_experiments.py --no-gpu                          # force CPU
+    python run_subregion_tf_experiments.py --replot --comb-spacing 8         # redraw from JSON
 """
 from __future__ import annotations
 
@@ -51,10 +52,9 @@ from gmmce.pipeline import (train_all, evaluate_joint, evaluate_cascade, normali
                             ALL_GMM_VARIANTS)
 from gmmce.pdp_ds import pdp_ds_kron_estimate, pdp_ds_2x1d_estimate
 from gmmce.plotting import STYLE, _decade_ticks_only
-from gmmce.subregion_data import SubregionChannels
+from gmmce.subregion_tf_data import SubregionChannelsTF
 
-# same component budgets as gmmce/run_experiments.py SCALES
-# (Kt*Kc == K for kron; Kt_2x1d + Kc_2x1d == K for 2x1D, per the paper)
+# same component budgets as gmmce/run_experiments.py SCALES / run_subregion_experiments.py
 SCALES = {
     "quick":   dict(K=8, Kt=4, Kc=2, Kt_2x1d=2, Kc_2x1d=6, n_train=3000, n_calib=500, n_test=500, n_iter=8),
     "demo":    dict(K=16, Kt=8, Kc=4, Kt_2x1d=4, Kc_2x1d=12, n_train=5000, n_calib=800, n_test=800, n_iter=10),
@@ -99,8 +99,9 @@ def _eval_all_joint_and_cascade(models, grid, Hcal, Hte, sigma2, rng, names):
 
 def make_grid(Nc: int, Nt: int, comb_spacing: int = 0) -> PilotGrid:
     """comb_spacing 0 or 1 -> full pilot (A = I).  comb_spacing s>1 -> a
-    frequency comb: pilots on every s-th subcarrier, ALL Nt antennas
-    observed (Npc = ceil(Nc/s), Npt = Nt).  Still a separable
+    frequency comb: pilots on every s-th subcarrier, ALL Nt OFDM symbols
+    observed (Npc = ceil(Nc/s), Npt = Nt) -- the classic OFDM comb-pilot
+    pattern (sparse in frequency, dense in time). Still a separable
     Cartesian-product grid, so the Kronecker / 2x1D estimators' A = A_t (x)
     A_c assumption holds."""
     g = PilotGrid.__new__(PilotGrid)
@@ -185,7 +186,7 @@ def run_nmse_vs_components(data, cfg, sc, grid, snr_db=10.0, seed=0, log=print) 
 
 
 # ----------------------------------------------------------------------- plots
-PLOT_TITLE = ""   # set in main() -- e.g. "1x4 TX, freq comb spacing 4 (Np=64/256)"
+PLOT_TITLE = ""   # set in main()
 
 
 def _sci_tick_label(val: float) -> str:
@@ -241,20 +242,25 @@ def _plot_curves(x, xlabel, results, order, save_path, xticks=None, decade_y=Tru
 
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--scale", choices=list(SCALES.keys()), default="quick")
-    p.add_argument("--outdir", default=None, help="default: results_subregion_M{m}")
-    p.add_argument("--m", type=int, default=4, help="TX ULA size (needs train/test_M{m}_F64_subregion100.npz)")
-    p.add_argument("--nc-ds", type=int, default=0, help="keep every k-th subcarrier (0 = auto: 2 if M=16 else 1)")
-    p.add_argument("--nt-ds", type=int, default=1, help="keep every k-th antenna")
+    p.add_argument("--scale", choices=list(SCALES.keys()), default="paper50",
+                   help="default paper50: K=128, N_train=1e5, n_iter=50 (task setting)")
+    p.add_argument("--outdir", default=None, help="default: results_subregion_tf")
+    p.add_argument("--n-symbols", type=int, default=14, help="Nt: needs train/test_siso_S{s}_..._subregion100.npz")
+    p.add_argument("--f", type=int, default=64, help="Nc: subcarriers")
+    p.add_argument("--speed", type=int, default=10, help="UE speed (m/s) tag of the data pool to load")
+    p.add_argument("--nc-ds", type=int, default=1, help="keep every k-th subcarrier")
+    p.add_argument("--nt-ds", type=int, default=1, help="keep every k-th OFDM symbol")
     p.add_argument("--comb-spacing", type=int, default=0,
                    help="0/1 = full pilot; s>1 = frequency comb, pilots every s-th subcarrier "
-                        "(all antennas observed) -> Np = ceil(Nc/s)*Nt")
+                        "(all OFDM symbols observed) -> Np = ceil(Nc/s)*Nt")
     p.add_argument("--seed", type=int, default=0)
-    p.add_argument("--data-tag", default="", help="load train/test_M{m}_F64_subregion100_{tag}.npz "
+    p.add_argument("--data-tag", default="", help="load train/test_siso_S{s}_F{f}_v{v}_subregion100_{tag}.npz "
                    "instead of the plain filename (e.g. 'ulatf' for the ULA-mobility-cube-derived pool)")
-    p.add_argument("--gpu", action="store_true",
-                   help="fit the GMMs on the GPU (torch) -- ~7x (full) to ~40x (b-toep) faster; "
-                        "needs the sionna-rt/CSI env (torch+CUDA). Results match CPU within EM noise.")
+    p.add_argument("--gpu", dest="gpu", action="store_true", default=True,
+                   help="fit the GMMs on the GPU (torch) -- default ON for this script "
+                        "(task setting); ~7x (full) to ~40x (b-toep) faster. Needs the "
+                        "sionna-rt/CSI env (torch+CUDA).")
+    p.add_argument("--no-gpu", dest="gpu", action="store_false", help="force CPU")
     p.add_argument("--no-btoep", action="store_true",
                    help="skip GMM b-toep entirely (not fit, not plotted/legended) -- it needs "
                         "~10x more EM iterations than every other variant, so this is a large "
@@ -274,21 +280,22 @@ def main():
         FIT_VARIANTS = tuple(v for v in ALL_GMM_VARIANTS if v != "b-toep")
 
     comb = args.comb_spacing if args.comb_spacing and args.comb_spacing > 1 else 0
-    default_outdir = (f"results_subregion_M{args.m}"
+    default_outdir = (f"results_subregion_tf_v{args.speed}"
                       + (f"_{args.data_tag}" if args.data_tag else "")
                       + (f"_comb{comb}" if comb else "")
                       + ("" if args.scale == "quick" else f"_{args.scale}"))
     args.outdir = args.outdir or default_outdir
-    nc_ds = args.nc_ds or (2 if args.m == 16 else 1)
     os.makedirs(args.outdir, exist_ok=True)
     sc = SCALES[args.scale]
 
     global PLOT_TITLE
-    _nc = 64 // nc_ds
+    _nc = args.f // args.nc_ds
+    _nt = args.n_symbols // args.nt_ds
     _npc = len(range(0, _nc, comb)) if comb else _nc
-    PLOT_TITLE = (f"1x{args.m} TX, "
-                  + (f"freq comb spacing {comb}" if comb else "full pilot")
-                  + f"  (Np={_npc * args.m}/{_nc * args.m})"
+    _sys_label = "1x4 ULA (ant#0)" if args.data_tag == "ulatf" else "SISO"
+    PLOT_TITLE = (f"{_sys_label} time-freq, v={args.speed}m/s, Nc={_nc} Nt={_nt}, "
+                  + (f"comb spacing {comb}" if comb else "full pilot")
+                  + f"  (Np={_npc * _nt}/{_nc * _nt})"
                   + (f"  [{args.scale}: K={sc['K']}, N={sc['n_train']}]"
                      if args.scale not in ("quick", "paper50") else ""))
 
@@ -310,12 +317,14 @@ def main():
                          xticks=r["K"], decade_y=True)
         return
 
-    data = SubregionChannels(m=args.m, nc_ds=nc_ds, nt_ds=args.nt_ds, seed=args.seed, data_tag=args.data_tag)
+    data = SubregionChannelsTF(n_symbols=args.n_symbols, n_subcarriers=args.f, speed=args.speed,
+                               nc_ds=args.nc_ds, nt_ds=args.nt_ds, seed=args.seed, data_tag=args.data_tag)
     cfg = SystemConfig(Nc=data.Nc, Nt=data.Nt)
     grid = make_grid(data.Nc, data.Nt, comb)
-    pilot_desc = "full pilot (A=I)" if not comb else f"freq comb spacing {comb}"
-    print(f"subregion100 channels: 1x{args.m} TX ULA  Nc(freq)={data.Nc}  Nt(antenna)={data.Nt}  "
-          f"D={data.Nc*data.Nt}  scale={data.scale:.4g}  |  scale={args.scale}")
+    pilot_desc = "full pilot (A=I)" if not comb else f"comb spacing {comb}"
+    print(f"subregion100 SISO time-freq channels: Nc(freq)={data.Nc}  Nt(OFDM symbol)={data.Nt}  "
+          f"D={data.Nc*data.Nt}  speed={args.speed}m/s  scale={data.scale:.4g}  |  scale={args.scale}  "
+          f"gpu={args.gpu}")
     print(f"pilots: {pilot_desc}  ->  Np = {grid.Np} / {data.Nc*data.Nt}  "
           f"(Npc={grid.Npc}, Npt={grid.Npt})")
     t0 = time.time()
